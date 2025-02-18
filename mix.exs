@@ -21,12 +21,14 @@ defmodule OpentelemetryPlug.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:hackney, "~> 1.0", only: :test, runtime: false},
-      {:opentelemetry_api, "~> 1.0"},
-      {:opentelemetry, "~> 1.0", only: :test},
-      {:plug, "~> 1.14"},
-      {:plug_cowboy, "~> 2.6", only: :test, runtime: false},
-      {:telemetry, "~> 1.0"}
+      {:opentelemetry_api, "~> 1.4"},
+      {:plug, "~> 1.16"},
+      {:telemetry, "~> 1.3"},
+      # Test dependencies
+      {:hackney, "~> 1.2", only: :test, runtime: false},
+      {:opentelemetry, "~> 1.5", only: :test},
+      {:plug_cowboy, "~> 2.7", only: :test, runtime: false},
+      {:ssl_verify_fun, "~> 1.1.7", only: :test}
     ]
   end
 end

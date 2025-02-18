@@ -185,11 +185,15 @@ defmodule OpentelemetryPlug do
   defp http_flavor({_adapter_name, meta}) do
     case Map.get(meta, :version) do
       :"HTTP/1.0" -> :"1.0"
+      :"HTTP/1" -> :"1.0"
       :"HTTP/1.1" -> :"1.1"
       :"HTTP/2.0" -> :"2.0"
+      :"HTTP/2" -> :"2.0"
+      :"HTTP/3.0" -> :"3.0"
+      :"HTTP/3" -> :"3.0"
       :SPDY -> :SPDY
       :QUIC -> :QUIC
-      nil -> ""
+      _other -> ""
     end
   end
 

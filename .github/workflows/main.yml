@@ -16,6 +16,8 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
       - name: Set up Elixir
         uses: erlef/setup-beam@v1.17.1
         with:

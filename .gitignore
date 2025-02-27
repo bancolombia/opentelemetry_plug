@@ -23,3 +23,5 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 opentelemetry_plug-*.tar
 
+dt_metadata_e617c525669e072eebe3d0f08212e8f2.properties
+.DS_Store

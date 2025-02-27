@@ -1,0 +1,94 @@
+name: ci
+on:
+  push:
+    branches:
+      - master
+      - feature/*
+      - fix/*
+  pull_request:
+    branches:
+      - master
+jobs:
+  build:
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate a token of Github APP
+        id: generate_token
+        if: github.ref == 'refs/heads/master'
+        uses: tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a # v2.1.0
+        with:
+          app_id: ${{ secrets.APP_ID_ADMIN_GITHUB }}
+          private_key: ${{ secrets.APP_PRIVATE_KEY_ADMIN_GITHUB }}
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        if: github.ref == 'refs/heads/master'
+        with:
+          token: ${{ steps.generate_token.outputs.token }}
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        if: github.ref != 'refs/heads/master'
+
+      - name: Verify Conventional Commits
+        uses: amannn/action-semantic-pull-request@0723387faaf9b38adef4775cd42cfd5155ed6017 # v5.5.3
+        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up NodeJS
+        if: github.ref == 'refs/heads/master'
+        uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
+        with:
+          node-version-file: '.nvmrc'
+      - name: Set up Semantic Release
+        if: github.ref == 'refs/heads/master'
+        run: npm -g install @semantic-release/git semantic-release@23.0.0
+      - name: Semantic Release
+        if: github.ref == 'refs/heads/master'
+        run: npx semantic-release@23.0.0
+        env:
+          GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          version-type: strict
+          version-file: ".tool-versions"
+      - name: Restore dependencies cache
+        uses: actions/cache@v4
+        with:
+          path: deps
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
+      - name: Install dependencies
+        run: mix deps.get && mix deps.compile
+        env:
+          SKIP_GIT_HOOKS: 'true'
+      - name: Validate code formatting
+        run: mix format --check-formatted
+      - name: Code analysis
+        run: mix credo --strict && mix dialyzer
+      - name: Tests & Coverage (master)
+        if: github.ref == 'refs/heads/master'
+        run: mix coveralls.github
+        env:
+          CI_ENV: 'true'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tests & Coverage (pull requests)
+        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+        run: mix coveralls.lcov
+        env:
+          CI_ENV: 'true'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Setup PR Report tool
+        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+        uses: hrishikesh-kadam/setup-lcov@v1
+      - name: Validate code coverage
+        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+        uses: zgosalvez/github-actions-report-lcov@v4
+        with:
+          coverage-files: cover/lcov.info
+          minimum-coverage: 70
+          artifact-name: code-coverage-report
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          update-comment: true

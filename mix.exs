@@ -17,7 +17,7 @@ defmodule OpentelemetryPlug.MixProject do
         "coveralls.xml": :test,
         "coveralls.github": :test,
         "coveralls.lcov": :test
-      ],
+      ]
     ]
   end
 

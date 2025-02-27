@@ -1,0 +1,61 @@
+name: ci
+on:
+  push:
+    branches:
+      - master
+      - feature/*
+      - fix/*
+  pull_request:
+    branches:
+      - master
+jobs:
+  build:
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1.17.1
+        with:
+          version-type: strict
+          version-file: ".tool-versions"
+      - name: Restore dependencies cache
+        uses: actions/cache@v4
+        with:
+          path: deps
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
+      - name: Install dependencies
+        run: mix deps.get && mix deps.compile
+        env:
+          SKIP_GIT_HOOKS: 'true'
+      - name: Validate code formatting
+        run: mix format --check-formatted
+      - name: Code analysis
+        run: mix credo --strict && mix dialyzer
+      - name: Tests & Coverage (master)
+        if: github.ref == 'refs/heads/master'
+        run: mix coveralls.github
+        env:
+          CI_ENV: 'true'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tests & Coverage (pull requests)
+        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+        run: mix coveralls.lcov
+        env:
+          CI_ENV: 'true'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Setup PR Report tool
+        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+        uses: hrishikesh-kadam/setup-lcov@v1
+      - name: Validate code coverage
+        if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+        uses: zgosalvez/github-actions-report-lcov@v4
+        with:
+          coverage-files: cover/lcov.info
+          minimum-coverage: 70
+          artifact-name: code-coverage-report
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          update-comment: true

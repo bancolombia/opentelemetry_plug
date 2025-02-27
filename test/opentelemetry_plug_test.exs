@@ -9,7 +9,10 @@ defmodule OpentelemetryPlugTest do
     )
   end
 
-  Record.defrecord(:status, Record.extract(:status, from_lib: "opentelemetry_api/include/opentelemetry.hrl"))
+  Record.defrecord(
+    :status,
+    Record.extract(:status, from_lib: "opentelemetry_api/include/opentelemetry.hrl")
+  )
 
   setup_all do
     OpentelemetryPlug.setup()
@@ -73,11 +76,11 @@ defmodule OpentelemetryPlugTest do
     assert 500 = Map.get(elem(attrs, 4), :"http.status_code")
     assert status(code: :error, message: _) = span_status
     event_extracted = List.first(elem(events, 5))
-    assert event(name: "exception", attributes: evt_attrs) = event_extracted
+    assert event(name: :exception, attributes: evt_attrs) = event_extracted
 
     evt_attrs_map = elem(evt_attrs, 4)
 
-    for key <- ~w(exception.type exception.message exception.stacktrace) do
+    for key <- [:"exception.type", :"exception.message", :"exception.stacktrace"] do
       assert Map.has_key?(evt_attrs_map, key)
     end
   end
@@ -91,8 +94,8 @@ defmodule OpentelemetryPlugTest do
 
   defp base_url do
     info = :ranch.info(MyRouter.HTTP)
-    port = Keyword.fetch!(info, :port)
-    ip = Keyword.fetch!(info, :ip)
+    port = Map.get(info, :port)
+    ip = Map.get(info, :ip)
     "http://#{:inet.ntoa(ip)}:#{port}"
   end
 

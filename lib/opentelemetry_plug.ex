@@ -42,7 +42,7 @@ defmodule OpentelemetryPlug do
   OpentelemetryPlug.setup()
 
   """
-  def setup() do
+  def setup do
     :telemetry.attach(
       {__MODULE__, :plug_router_start},
       [:plug, :router_dispatch, :start],
@@ -109,8 +109,6 @@ defmodule OpentelemetryPlug do
         "net.host.port": conn.port
       ] ++ optional_attributes(conn)
 
-    # TODO: Plug should provide a monotonic native time in measurements to use here
-    # for the `start_time` option
     span_ctx = Tracer.start_span(span_name, %{attributes: attributes, kind: :server})
 
     Tracer.set_current_span(span_ctx)
@@ -183,27 +181,28 @@ defmodule OpentelemetryPlug do
   end
 
   defp http_flavor({_adapter_name, meta}) do
-    case Map.get(meta, :version) do
-      :"HTTP/1.0" -> :"1.0"
-      :"HTTP/1" -> :"1.0"
-      :"HTTP/1.1" -> :"1.1"
-      :"HTTP/2.0" -> :"2.0"
-      :"HTTP/2" -> :"2.0"
-      :"HTTP/3.0" -> :"3.0"
-      :"HTTP/3" -> :"3.0"
-      :SPDY -> :SPDY
-      :QUIC -> :QUIC
-      _other -> ""
-    end
+    version = Map.get(meta, :version)
+    map_http_version(version)
   end
 
+  defp map_http_version(:"HTTP/1.0"), do: :"1.0"
+  defp map_http_version(:"HTTP/1"), do: :"1.0"
+  defp map_http_version(:"HTTP/1.1"), do: :"1.1"
+  defp map_http_version(:"HTTP/2.0"), do: :"2.0"
+  defp map_http_version(:"HTTP/2"), do: :"2.0"
+  defp map_http_version(:"HTTP/3.0"), do: :"3.0"
+  defp map_http_version(:"HTTP/3"), do: :"3.0"
+  defp map_http_version(:SPDY), do: :SPDY
+  defp map_http_version(:QUIC), do: :QUIC
+  defp map_http_version(_other), do: ""
+
   @ctx_key {__MODULE__, :parent_ctx}
-  defp save_parent_ctx() do
+  defp save_parent_ctx do
     ctx = Tracer.current_span_ctx()
     Process.put(@ctx_key, ctx)
   end
 
-  defp restore_parent_ctx() do
+  defp restore_parent_ctx do
     ctx = Process.get(@ctx_key, :undefined)
     Process.delete(@ctx_key)
     Tracer.set_current_span(ctx)

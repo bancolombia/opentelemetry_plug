@@ -43,7 +43,7 @@ defmodule OpentelemetryPlug do
   OpentelemetryPlug.setup()
 
   """
-  def setup() do
+  def setup do
     ignored = ignored_routes()
 
     :telemetry.attach(

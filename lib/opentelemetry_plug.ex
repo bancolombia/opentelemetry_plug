@@ -115,7 +115,7 @@ defmodule OpentelemetryPlug do
   end
 
   @doc false
-  def handle_exception(_, _measurements, metadata = %{conn: conn, route: route}, ignored) do
+  def handle_exception(_, _measurements, %{conn: conn, route: route} = metadata, ignored) do
     if Map.has_key?(ignored, route) do
       setup_span(conn, route)
     end

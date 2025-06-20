@@ -3,6 +3,7 @@ defmodule OpentelemetryPlug do
   Telemetry handler for creating OpenTelemetry Spans from Plug events.
   """
 
+  require Logger
   require OpenTelemetry.Tracer, as: Tracer
   alias OpenTelemetry.Span
 
@@ -43,25 +44,27 @@ defmodule OpentelemetryPlug do
 
   """
   def setup do
+    ignored = ignored_routes()
+
     :telemetry.attach(
       {__MODULE__, :plug_router_start},
       [:plug, :router_dispatch, :start],
       &__MODULE__.handle_start/4,
-      nil
+      ignored
     )
 
     :telemetry.attach(
       {__MODULE__, :plug_router_stop},
       [:plug, :router_dispatch, :stop],
       &__MODULE__.handle_stop/4,
-      nil
+      ignored
     )
 
     :telemetry.attach(
       {__MODULE__, :plug_router_exception},
       [:plug, :router_dispatch, :exception],
       &__MODULE__.handle_exception/4,
-      nil
+      ignored
     )
   end
 
@@ -79,7 +82,63 @@ defmodule OpentelemetryPlug do
              ], false | true | :undefined, boolean, false | true | :undefined,
              :undefined | {atom, any}}
   @doc false
-  def handle_start(_, _measurements, %{conn: conn, route: route}, _config) do
+  def handle_start(_, _measurements, %{conn: conn, route: route}, ignored) do
+    if not Map.has_key?(ignored, route) do
+      setup_span(conn, route)
+    end
+  end
+
+  @doc false
+  def handle_stop(_, _measurements, %{conn: conn, route: route}, ignored) do
+    disabled? = Map.has_key?(ignored, route)
+    is_error? = conn.status >= 400
+    record? = not disabled? or is_error?
+    # For HTTP status codes in the 4xx and 5xx ranges, as well as any other
+    # code the client failed to interpret, status MUST be set to Error.
+    #
+    # Don't set the span status description if the reason can be inferred from
+    # http.status_code.
+    if is_error? and disabled? do
+      setup_span(conn, route)
+    end
+
+    if is_error? do
+      Tracer.set_status(OpenTelemetry.status(:error, ""))
+    end
+
+    if record? do
+      Tracer.set_attribute(:"http.status_code", conn.status)
+
+      Tracer.end_span()
+      restore_parent_ctx()
+    end
+  end
+
+  @doc false
+  def handle_exception(_, _measurements, %{conn: conn, route: route} = metadata, ignored) do
+    if Map.has_key?(ignored, route) do
+      setup_span(conn, route)
+    end
+
+    %{kind: kind, stacktrace: stacktrace} = metadata
+    # This metadata key changed from :error to :reason in Plug 1.10.3
+    reason = metadata[:reason] || metadata[:error]
+
+    exception = Exception.normalize(kind, reason, stacktrace)
+
+    Span.record_exception(
+      Tracer.current_span_ctx(),
+      exception,
+      stacktrace
+    )
+
+    Tracer.set_status(OpenTelemetry.status(:error, Exception.message(exception)))
+    Tracer.set_attribute(:"http.status_code", 500)
+    Tracer.end_span()
+    restore_parent_ctx()
+  end
+
+  defp setup_span(conn, route) do
     save_parent_ctx()
     # setup OpenTelemetry context based on request headers
     :otel_propagator_text_map.extract(conn.req_headers)
@@ -112,42 +171,6 @@ defmodule OpentelemetryPlug do
     span_ctx = Tracer.start_span(span_name, %{attributes: attributes, kind: :server})
 
     Tracer.set_current_span(span_ctx)
-  end
-
-  @doc false
-  def handle_stop(_, _measurements, %{conn: conn}, _config) do
-    Tracer.set_attribute(:"http.status_code", conn.status)
-    # For HTTP status codes in the 4xx and 5xx ranges, as well as any other
-    # code the client failed to interpret, status MUST be set to Error.
-    #
-    # Don't set the span status description if the reason can be inferred from
-    # http.status_code.
-    if conn.status >= 400 do
-      Tracer.set_status(OpenTelemetry.status(:error, ""))
-    end
-
-    Tracer.end_span()
-    restore_parent_ctx()
-  end
-
-  @doc false
-  def handle_exception(_, _measurements, metadata, _config) do
-    %{kind: kind, stacktrace: stacktrace} = metadata
-    # This metadata key changed from :error to :reason in Plug 1.10.3
-    reason = metadata[:reason] || metadata[:error]
-
-    exception = Exception.normalize(kind, reason, stacktrace)
-
-    Span.record_exception(
-      Tracer.current_span_ctx(),
-      exception,
-      stacktrace
-    )
-
-    Tracer.set_status(OpenTelemetry.status(:error, Exception.message(exception)))
-    Tracer.set_attribute(:"http.status_code", 500)
-    Tracer.end_span()
-    restore_parent_ctx()
   end
 
   defp header_or_empty(conn, header) do
@@ -206,5 +229,19 @@ defmodule OpentelemetryPlug do
     ctx = Process.get(@ctx_key, :undefined)
     Process.delete(@ctx_key)
     Tracer.set_current_span(ctx)
+  end
+
+  defp ignored_routes do
+    Application.get_env(:opentelemetry_plug, :ignored_routes, [])
+    |> log_ignored_route()
+    |> Enum.into(%{}, fn key -> {key, true} end)
+  end
+
+  defp log_ignored_route(routes) do
+    if Enum.count(routes) > 0 do
+      Logger.warning("OpentelemetryPlug is ignoring the following routes: #{inspect(routes)}")
+    end
+
+    routes
   end
 end

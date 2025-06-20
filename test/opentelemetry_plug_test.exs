@@ -92,6 +92,32 @@ defmodule OpentelemetryPlugTest do
     assert status(code: :error, message: _) = span_status
   end
 
+  test "ignored route should be included when http error" do
+    assert {500, _headers, _body} = request(:get, "/health", [{"mode", "fail"}])
+
+    assert_receive {:span, span(attributes: attrs)}, 5000
+    attrs_map = elem(attrs, 4)
+
+    assert 500 == Map.get(attrs_map, :"http.status_code")
+    assert "/health" == Map.get(attrs_map, :"http.route")
+  end
+
+  test "ignored route should be included when crash error" do
+    assert {500, _headers, _body} = request(:get, "/health", [{"mode", "error"}])
+
+    assert_receive {:span, span(attributes: attrs)}, 5000
+    attrs_map = elem(attrs, 4)
+
+    assert 500 == Map.get(attrs_map, :"http.status_code")
+    assert "/health" == Map.get(attrs_map, :"http.route")
+  end
+
+  test "ignored route should not geneate span" do
+    assert {200, _headers, _body} = request(:get, "/health", [{"mode", "success"}])
+
+    refute_receive {:span, span(attributes: _attrs)}, 5000
+  end
+
   defp base_url do
     info = :ranch.info(MyRouter.HTTP)
     port = Map.get(info, :port)
@@ -123,6 +149,23 @@ defmodule MyRouter do
   plug :match
   plug OpentelemetryPlug.Propagation
   plug :dispatch
+
+  match "/health" do
+    case get_req_header(conn, "mode") do
+      ["fail"] ->
+        conn
+        |> put_resp_content_type("text/plain")
+        |> send_resp(500, "unhealthy")
+
+      ["error"] ->
+        raise ArgumentError
+
+      _ ->
+        conn
+        |> put_resp_content_type("text/plain")
+        |> send_resp(200, "healthy")
+    end
+  end
 
   match "/hello/crash" do
     _ = conn

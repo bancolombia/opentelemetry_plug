@@ -143,7 +143,7 @@ defmodule OpentelemetryPlug do
     # setup OpenTelemetry context based on request headers
     :otel_propagator_text_map.extract(conn.req_headers)
 
-    span_name = "#{route}"
+    span_name = span_name("#{route}", conn.request_path)
 
     peer_data = Plug.Conn.get_peer_data(conn)
 
@@ -172,6 +172,9 @@ defmodule OpentelemetryPlug do
 
     Tracer.set_current_span(span_ctx)
   end
+
+  defp span_name("/*_path", path), do: path
+  defp span_name(route, _path), do: route
 
   defp header_or_empty(conn, header) do
     case Plug.Conn.get_req_header(conn, header) do

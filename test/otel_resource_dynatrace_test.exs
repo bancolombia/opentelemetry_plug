@@ -13,7 +13,7 @@ defmodule TestOtelResourceDynatrace do
     end
 
     test "handles missing files gracefully" do
-      with_mock File, read!: fn _ -> raise File.Error, message: "File not found" end do
+      with_mock File, read!: fn _ -> raise File.Error, reason: "File not found" end do
         resource = OtelResourceDynatrace.get_resource(nil)
         assert resource == :otel_resource.create([])
       end

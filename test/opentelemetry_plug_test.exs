@@ -125,11 +125,6 @@ defmodule OpentelemetryPlugTest do
     "http://#{:inet.ntoa(ip)}:#{port}"
   end
 
-  defp request(:head = verb, path) do
-    {:ok, status, headers} = :hackney.request(verb, base_url() <> path, [], "", [])
-    {status, headers, nil}
-  end
-
   defp request(verb, path, headers \\ [], body \\ "") do
     case :hackney.request(verb, base_url() <> path, headers, body, []) do
       {:ok, status, headers, client} ->

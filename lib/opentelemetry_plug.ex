@@ -148,7 +148,7 @@ defmodule OpentelemetryPlug do
     peer_data = Plug.Conn.get_peer_data(conn)
 
     user_agent = header_or_empty(conn, "User-Agent")
-    host = header_or_empty(conn, "Host")
+    origin = header_or_empty(conn, "Origin")
     peer_ip = Map.get(peer_data, :address)
 
     attributes =
@@ -162,7 +162,7 @@ defmodule OpentelemetryPlug do
         "http.method": conn.method,
         "net.peer.ip": to_string(:inet_parse.ntoa(peer_ip)),
         "net.peer.port": peer_data.port,
-        "net.peer.name": host,
+        "net.peer.name": origin,
         "net.transport": "IP.TCP",
         "net.host.ip": to_string(:inet_parse.ntoa(conn.remote_ip)),
         "net.host.port": conn.port
@@ -177,12 +177,12 @@ defmodule OpentelemetryPlug do
   defp span_name(route, _path), do: route
 
   defp header_or_empty(conn, header) do
-    case Plug.Conn.get_req_header(conn, header) do
+    case Plug.Conn.get_req_header(conn, String.downcase(header)) do
       [] ->
         ""
 
-      [host | _] ->
-        host
+      [value | _] ->
+        value
     end
   end
 
@@ -193,12 +193,12 @@ defmodule OpentelemetryPlug do
   end
 
   defp client_ip(conn) do
-    case Plug.Conn.get_req_header(conn, "x-forwarded-for") do
-      [] ->
+    case(header_or_empty(conn, "x-forwarded-for")) do
+      "" ->
         nil
 
-      [host | _] ->
-        host
+      ip ->
+        ip
     end
   end
 

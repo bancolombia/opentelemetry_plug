@@ -14,6 +14,7 @@ defmodule OpentelemetryPlug do
     URLAttributes,
     UserAgentAttributes
   }
+
   alias OpenTelemetry.SemConv.Incubating.HTTPAttributes, as: IncubatingHTTPAttributes
 
   alias OpenTelemetry.Span

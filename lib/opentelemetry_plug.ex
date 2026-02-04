@@ -19,6 +19,8 @@ defmodule OpentelemetryPlug do
 
   alias OpenTelemetry.Span
 
+  @dialyzer {:nowarn_function, client_info: 3}
+
   @default_request_headers_to_trace [
     "accept",
     "content-type",
@@ -263,10 +265,12 @@ defmodule OpentelemetryPlug do
   end
 
   defp client_info(conn, peer_ip, peer_port) do
-    %{port: port, ip: ip} = :otel_http.extract_client_info(conn.req_headers)
-    final_ip = ip || to_string(:inet_parse.ntoa(peer_ip))
-    final_port = if port == :undefined, do: peer_port, else: port
-    {final_ip, final_port}
+    case :otel_http.extract_client_info(conn.req_headers) do
+      %{ip: :undefined, port: :undefined} -> {peer_ip, peer_port}
+      %{ip: ip, port: :undefined} -> {ip, peer_port}
+      %{ip: :undefined, port: port} -> {peer_ip, port}
+      %{ip: ip, port: port} -> {ip, port}
+    end
   end
 
   defp get_query_string(conn) do

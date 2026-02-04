@@ -8,8 +8,13 @@ defmodule OpentelemetryPlug.MixProject do
       elixir: "~> 1.10",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      test_coverage: [tool: ExCoveralls],
-      preferred_cli_env: [
+      test_coverage: [tool: ExCoveralls]
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [
         coveralls: :test,
         "coveralls.detail": :test,
         "coveralls.post": :test,
@@ -33,7 +38,9 @@ defmodule OpentelemetryPlug.MixProject do
     [
       {:opentelemetry_api, "~> 1.5"},
       {:opentelemetry, "~> 1.7"},
-      {:plug, "~> 1.18"},
+      {:opentelemetry_semantic_conventions, "~> 1.27"},
+      {:plug, "~> 1.19"},
+      {:otel_http, "~> 0.2"},
       {:telemetry, "~> 1.3"},
       # Test dependencies
       {:mock, "~> 0.3", only: :test},

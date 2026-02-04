@@ -29,19 +29,23 @@ defmodule OpentelemetryPlugTest do
   end
 
   @default_attrs ~w(
-    http.flavor
-    http.method
+    http.response.body.size
+    http.response.status_code
+    client.port
+    client.address
+    http.request.method
     http.route
-    http.scheme
-    http.status_code
-    http.target
-    http.user_agent
-    net.host.ip
-    net.host.port
-    net.peer.ip
-    net.peer.name
-    net.peer.port
-    net.transport
+    network.local.address
+    network.protocol.name
+    network.protocol.version
+    network.peer.address
+    network.transport
+    server.address
+    server.port
+    url.path
+    url.scheme
+    user_agent.original
+    http.response.header.content-type
   )a
 
   test "creates span and adds propagation headers" do
@@ -57,23 +61,21 @@ defmodule OpentelemetryPlugTest do
   end
 
   test "adds optional attributes when available" do
-    Application.put_env(:opentelemetry_plug, :server_name, "example.com")
-
     assert {200, _headers, _body} =
              request(:get, "/hello/world", [{"x-forwarded-for", "1.1.1.1"}])
 
     assert_receive {:span, span(attributes: attrs)}, 5000
     attrs_map = elem(attrs, 4)
 
-    assert Map.has_key?(attrs_map, :"http.client_ip")
-    assert Map.has_key?(attrs_map, :"http.server_name")
+    assert Map.has_key?(attrs_map, :"client.address")
+    assert Map.has_key?(attrs_map, :"server.address")
   end
 
   test "records exceptions" do
     assert {500, _, _} = request(:get, "/hello/crash")
     assert_receive {:span, span(attributes: attrs, status: span_status, events: events)}, 5000
 
-    assert 500 = Map.get(elem(attrs, 4), :"http.status_code")
+    assert 500 = Map.get(elem(attrs, 4), :"http.response.status_code")
     assert status(code: :error, message: _) = span_status
     event_extracted = List.first(elem(events, 5))
     assert event(name: :exception, attributes: evt_attrs) = event_extracted
@@ -88,7 +90,7 @@ defmodule OpentelemetryPlugTest do
   test "sets span status on non-successful status codes" do
     assert {400, _, _} = request(:get, "/hello/bad-request")
     assert_receive {:span, span(attributes: attrs, status: span_status)}, 5000
-    assert 400 = Map.get(elem(attrs, 4), :"http.status_code")
+    assert 400 = Map.get(elem(attrs, 4), :"http.response.status_code")
     assert status(code: :error, message: _) = span_status
   end
 
@@ -98,7 +100,7 @@ defmodule OpentelemetryPlugTest do
     assert_receive {:span, span(attributes: attrs)}, 5000
     attrs_map = elem(attrs, 4)
 
-    assert 500 == Map.get(attrs_map, :"http.status_code")
+    assert 500 == Map.get(attrs_map, :"http.response.status_code")
     assert "/health" == Map.get(attrs_map, :"http.route")
   end
 
@@ -108,7 +110,7 @@ defmodule OpentelemetryPlugTest do
     assert_receive {:span, span(attributes: attrs)}, 5000
     attrs_map = elem(attrs, 4)
 
-    assert 500 == Map.get(attrs_map, :"http.status_code")
+    assert 500 == Map.get(attrs_map, :"http.response.status_code")
     assert "/health" == Map.get(attrs_map, :"http.route")
   end
 

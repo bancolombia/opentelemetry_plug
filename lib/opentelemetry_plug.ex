@@ -5,7 +5,34 @@ defmodule OpentelemetryPlug do
 
   require Logger
   require OpenTelemetry.Tracer, as: Tracer
+
+  alias OpenTelemetry.SemConv.{
+    ClientAttributes,
+    HTTPAttributes,
+    NetworkAttributes,
+    ServerAttributes,
+    URLAttributes,
+    UserAgentAttributes
+  }
+  alias OpenTelemetry.SemConv.Incubating.HTTPAttributes, as: IncubatingHTTPAttributes
+
   alias OpenTelemetry.Span
+
+  @default_request_headers_to_trace [
+    "accept",
+    "content-type",
+    "origin",
+    "traceparent",
+    "tracestate",
+    "x-forwarded-for",
+    "x-forwarded-proto",
+    "x-request-id"
+  ]
+
+  @default_response_headers_to_trace [
+    "content-type",
+    "x-request-id"
+  ]
 
   defmodule Propagation do
     @moduledoc """
@@ -30,7 +57,17 @@ defmodule OpentelemetryPlug do
 
     @impl true
     def call(conn, _opts) do
-      register_before_send(conn, &merge_resp_headers(&1, :otel_propagator_text_map.inject([])))
+      register_before_send(conn, fn conn ->
+        case OpentelemetryPlug.body_size(conn, :response) do
+          nil ->
+            :ok
+
+          size ->
+            Tracer.set_attribute(IncubatingHTTPAttributes.http_response_body_size(), size)
+        end
+
+        merge_resp_headers(conn, :otel_propagator_text_map.inject([]))
+      end)
     end
   end
 
@@ -97,7 +134,7 @@ defmodule OpentelemetryPlug do
     # code the client failed to interpret, status MUST be set to Error.
     #
     # Don't set the span status description if the reason can be inferred from
-    # http.status_code.
+    # http.response.status_code.
     if is_error? and disabled? do
       setup_span(conn, route)
     end
@@ -107,7 +144,10 @@ defmodule OpentelemetryPlug do
     end
 
     if record? do
-      Tracer.set_attribute(:"http.status_code", conn.status)
+      extract_headers(conn, :response)
+      |> Enum.each(fn {key, value} -> Tracer.set_attribute(key, value) end)
+
+      Tracer.set_attribute(HTTPAttributes.http_response_status_code(), conn.status)
 
       Tracer.end_span()
       restore_parent_ctx()
@@ -133,7 +173,7 @@ defmodule OpentelemetryPlug do
     )
 
     Tracer.set_status(OpenTelemetry.status(:error, Exception.message(exception)))
-    Tracer.set_attribute(:"http.status_code", 500)
+    Tracer.set_attribute(HTTPAttributes.http_response_status_code(), 500)
     Tracer.end_span()
     restore_parent_ctx()
   end
@@ -144,29 +184,30 @@ defmodule OpentelemetryPlug do
     :otel_propagator_text_map.extract(conn.req_headers)
 
     span_name = span_name("#{route}", conn.request_path)
-
     peer_data = Plug.Conn.get_peer_data(conn)
+    peer_address = to_string(:inet_parse.ntoa(Map.get(peer_data, :address)))
 
-    user_agent = header_or_empty(conn, "User-Agent")
-    origin = header_or_empty(conn, "Origin")
-    peer_ip = Map.get(peer_data, :address)
+    {protocol, protocol_version} = protocol_info(conn.adapter)
+    {client_address, client_port} = client_info(conn, peer_address, peer_data.port)
 
     attributes =
-      [
-        "http.target": conn.request_path,
-        "http.host": conn.host,
-        "http.scheme": conn.scheme,
-        "http.flavor": http_flavor(conn.adapter),
-        "http.route": route,
-        "http.user_agent": user_agent,
-        "http.method": conn.method,
-        "net.peer.ip": to_string(:inet_parse.ntoa(peer_ip)),
-        "net.peer.port": peer_data.port,
-        "net.peer.name": origin,
-        "net.transport": "IP.TCP",
-        "net.host.ip": to_string(:inet_parse.ntoa(conn.remote_ip)),
-        "net.host.port": conn.port
-      ] ++ optional_attributes(conn)
+      %{
+        ClientAttributes.client_port() => client_port,
+        ClientAttributes.client_address() => client_address,
+        HTTPAttributes.http_request_method() => conn.method,
+        HTTPAttributes.http_route() => route,
+        NetworkAttributes.network_local_address() => to_string(:inet_parse.ntoa(conn.remote_ip)),
+        NetworkAttributes.network_protocol_name() => protocol,
+        NetworkAttributes.network_protocol_version() => protocol_version,
+        NetworkAttributes.network_peer_address() => peer_address,
+        NetworkAttributes.network_transport() => "tcp",
+        ServerAttributes.server_address() => conn.host,
+        ServerAttributes.server_port() => conn.port,
+        URLAttributes.url_path() => conn.request_path,
+        URLAttributes.url_scheme() => conn.scheme
+      }
+      |> Map.merge(optional_attributes(conn))
+      |> Map.merge(extract_headers(conn, :request))
 
     span_ctx = Tracer.start_span(span_name, %{attributes: attributes, kind: :server})
 
@@ -176,10 +217,33 @@ defmodule OpentelemetryPlug do
   defp span_name("/*_path", path), do: path
   defp span_name(route, _path), do: route
 
-  defp header_or_empty(conn, header) do
-    case Plug.Conn.get_req_header(conn, String.downcase(header)) do
+  defp extract_headers(conn, type) do
+    headers_to_trace(type)
+    |> Enum.map(fn header ->
+      value = header_or_nil(conn, header, type)
+      {:"http.#{type}.header.#{String.downcase(header)}", value}
+    end)
+    |> Enum.reject(&is_nil(elem(&1, 1)))
+    |> Enum.into(%{})
+  end
+
+  defp header_or_nil(conn, header, :request) do
+    Plug.Conn.get_req_header(conn, String.downcase(header))
+    |> clean_header()
+  end
+
+  defp header_or_nil(conn, header, :response) do
+    Plug.Conn.get_resp_header(conn, String.downcase(header))
+    |> clean_header()
+  end
+
+  defp clean_header(header) do
+    case header do
       [] ->
-        ""
+        nil
+
+      ["" | _] ->
+        nil
 
       [value | _] ->
         value
@@ -187,40 +251,71 @@ defmodule OpentelemetryPlug do
   end
 
   defp optional_attributes(conn) do
-    ["http.client_ip": &client_ip/1, "http.server_name": &server_name/1]
+    %{
+      UserAgentAttributes.user_agent_original() => &header_or_nil(&1, "user-agent", :request),
+      IncubatingHTTPAttributes.http_request_body_size() => &body_size(&1, :request),
+      URLAttributes.url_query() => &get_query_string/1
+    }
     |> Enum.map(fn {attr, fun} -> {attr, fun.(conn)} end)
     |> Enum.reject(&is_nil(elem(&1, 1)))
+    |> Enum.into(%{})
   end
 
-  defp client_ip(conn) do
-    case(header_or_empty(conn, "x-forwarded-for")) do
-      "" ->
-        nil
+  defp client_info(conn, peer_ip, peer_port) do
+    %{port: port, ip: ip} = :otel_http.extract_client_info(conn.req_headers)
+    final_ip = ip || to_string(:inet_parse.ntoa(peer_ip))
+    final_port = if port == :undefined, do: peer_port, else: port
+    {final_ip, final_port}
+  end
 
-      ip ->
-        ip
+  defp get_query_string(conn) do
+    case conn.query_string do
+      "" -> nil
+      qs -> qs
     end
   end
 
-  defp server_name(_) do
-    Application.get_env(:opentelemetry_plug, :server_name, nil)
+  def body_size(conn, type) do
+    case header_or_nil(conn, "content-length", type) do
+      nil ->
+        body_size_from_conn(conn, type)
+
+      value ->
+        case Integer.parse(value) do
+          {size, _} -> size
+          :error -> nil
+        end
+    end
   end
 
-  defp http_flavor({_adapter_name, meta}) do
+  defp body_size_from_conn(conn, type) do
+    case type do
+      :request ->
+        nil
+
+      :response ->
+        case conn.resp_body do
+          nil -> nil
+          body -> IO.iodata_length(body)
+        end
+    end
+  end
+
+  defp protocol_info({_adapter_name, meta}) do
     version = Map.get(meta, :version)
     map_http_version(version)
   end
 
-  defp map_http_version(:"HTTP/1.0"), do: :"1.0"
-  defp map_http_version(:"HTTP/1"), do: :"1.0"
-  defp map_http_version(:"HTTP/1.1"), do: :"1.1"
-  defp map_http_version(:"HTTP/2.0"), do: :"2.0"
-  defp map_http_version(:"HTTP/2"), do: :"2.0"
-  defp map_http_version(:"HTTP/3.0"), do: :"3.0"
-  defp map_http_version(:"HTTP/3"), do: :"3.0"
-  defp map_http_version(:SPDY), do: :SPDY
-  defp map_http_version(:QUIC), do: :QUIC
-  defp map_http_version(_other), do: ""
+  defp map_http_version(:"HTTP/1.0"), do: {"http", :"1.0"}
+  defp map_http_version(:"HTTP/1"), do: {"http", :"1.0"}
+  defp map_http_version(:"HTTP/1.1"), do: {"http", :"1.1"}
+  defp map_http_version(:"HTTP/2.0"), do: {"http", :"2.0"}
+  defp map_http_version(:"HTTP/2"), do: {"http", :"2.0"}
+  defp map_http_version(:"HTTP/3.0"), do: {"http", :"3.0"}
+  defp map_http_version(:"HTTP/3"), do: {"http", :"3.0"}
+  defp map_http_version(:SPDY), do: {"SPDY", :"2"}
+  defp map_http_version(:QUIC), do: {"QUIC", :"3"}
+  defp map_http_version(_other), do: {"", :""}
 
   @ctx_key {__MODULE__, :parent_ctx}
   defp save_parent_ctx do
@@ -246,5 +341,23 @@ defmodule OpentelemetryPlug do
     end
 
     routes
+  end
+
+  defp headers_to_trace(:request) do
+    Application.get_env(
+      :opentelemetry_plug,
+      :request_headers_to_trace,
+      @default_request_headers_to_trace
+    ) ++
+      Application.get_env(:opentelemetry_plug, :extra_request_headers_to_trace, [])
+  end
+
+  defp headers_to_trace(:response) do
+    Application.get_env(
+      :opentelemetry_plug,
+      :response_headers_to_trace,
+      @default_response_headers_to_trace
+    ) ++
+      Application.get_env(:opentelemetry_plug, :extra_response_headers_to_trace, [])
   end
 end

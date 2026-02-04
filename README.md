@@ -9,7 +9,7 @@ The package can be installed by adding `opentelemetry_plug` to your list of depe
 ```elixir
 def deps do
   [
-    {:opentelemetry_plug, git: "https://github.com/bancolombia/opentelemetry_plug.git", tag: "v1.1.1"}, # Check for latest tag on GitHub
+    {:opentelemetry_plug, git: "https://github.com/bancolombia/opentelemetry_plug.git", tag: "v1.3.0"}, # Check for latest tag on GitHub
   ]
 end
 ```
@@ -20,6 +20,24 @@ You can ignore specific routes to avoid traces generation (it always will genera
 
 ```elixir
 config :opentelemetry_plug,
-  ignored_routes: ["/health", "/metrics"]
+  ignored_routes: ["/health", "/metrics"],
+  extra_request_headers_to_trace: [],
+  extra_response_headers_to_trace: [],
+  # default request headers to trace
+  # request_headers_to_trace: [
+  #   "accept",
+  #   "content-type",
+  #   "origin",
+  #   "traceparent",
+  #   "tracestate",
+  #   "x-forwarded-for",
+  #   "x-forwarded-proto",
+  #   "x-request-id"
+  # ],
+  # default response headers to trace
+  # response_headers_to_trace: [
+  #  "content-type",
+  #  "x-request-id"
+  # ]
 ```
 

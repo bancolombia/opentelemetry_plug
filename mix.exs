@@ -1,7 +1,7 @@
 defmodule OpentelemetryPlug.MixProject do
   use Mix.Project
 
-  @version "1.3.0"
+  @version "1.3.1"
 
   def project do
     [

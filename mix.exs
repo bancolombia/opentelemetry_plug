@@ -1,14 +1,24 @@
 defmodule OpentelemetryPlug.MixProject do
   use Mix.Project
 
+  @version "1.3.0"
+
   def project do
     [
-      app: :opentelemetry_plug,
-      version: "0.1.0",
+      app: :otel_plug,
+      version: @version,
       elixir: "~> 1.10",
+      docs: [
+        extras: ["README.md"],
+        main: "readme",
+        source_ref: "v#{@version}"
+      ],
       start_permanent: Mix.env() == :prod,
+      test_coverage: [tool: ExCoveralls],
       deps: deps(),
-      test_coverage: [tool: ExCoveralls]
+      package: package(),
+      description: description(),
+      source_url: "https://github.com/bancolombia/opentelemetry_plug"
     ]
   end
 
@@ -26,10 +36,25 @@ defmodule OpentelemetryPlug.MixProject do
     ]
   end
 
+  defp description() do
+    "An OpenTelemetry Plug middleware for instrumenting HTTP requests in Elixir applications using the Plug framework."
+  end
+
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
       extra_applications: [:logger]
+    ]
+  end
+
+  defp package do
+    [
+      files: ["lib", "mix.exs", "README.md", "LICENSE"],
+      maintainers: ["juancgalvis"],
+      licenses: ["Apache-2.0"],
+      links: %{
+        "GitHub" => "https://github.com/bancolombia/opentelemetry_plug"
+      }
     ]
   end
 
@@ -41,14 +66,15 @@ defmodule OpentelemetryPlug.MixProject do
       {:opentelemetry_semantic_conventions, "~> 1.27"},
       {:plug, "~> 1.19"},
       {:otel_http, "~> 0.2"},
-      {:telemetry, "~> 1.3"},
+      {:telemetry, "~> 1.4"},
       # Test dependencies
       {:mock, "~> 0.3", only: :test},
       {:excoveralls, "~> 0.18", [only: [:dev, :test]]},
-      {:hackney, "~> 1.25", only: :test, runtime: false},
+      {:hackney, "~> 4.0", only: :test, runtime: false},
       # {:opentelemetry, "~> 1.5", only: :test},
-      {:plug_cowboy, "~> 2.7", only: :test, runtime: false},
-      {:ssl_verify_fun, "~> 1.1.7", only: :test},
+      {:plug_cowboy, "~> 2.8", only: :test, runtime: false},
+      {:ssl_verify_fun, "~> 1.1", only: :test},
+      {:sobelow, "~> 0.14", [only: [:dev, :test], runtime: false]},
       {:credo, "~> 1.7", [only: [:dev, :test], runtime: false]},
       {:dialyxir, "~> 1.4", [only: [:dev, :test], runtime: false]}
     ]

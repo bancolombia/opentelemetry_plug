@@ -129,10 +129,8 @@ defmodule OpentelemetryPlugTest do
 
   defp request(verb, path, headers \\ [], body \\ "") do
     case :hackney.request(verb, base_url() <> path, headers, body, []) do
-      {:ok, status, headers, client} ->
-        {:ok, body} = :hackney.body(client)
-        :hackney.close(client)
-        {status, headers, body}
+      {:ok, status, headers, response_body} when is_binary(response_body) ->
+        {status, headers, response_body}
 
       {:error, _} = error ->
         error

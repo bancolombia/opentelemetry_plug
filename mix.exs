@@ -71,7 +71,6 @@ defmodule OpentelemetryPlug.MixProject do
       {:mock, "~> 0.3", only: :test},
       {:excoveralls, "~> 0.18", [only: [:dev, :test]]},
       {:hackney, "~> 4.0", only: :test, runtime: false},
-      # {:opentelemetry, "~> 1.5", only: :test},
       {:plug_cowboy, "~> 2.8", only: :test, runtime: false},
       {:ssl_verify_fun, "~> 1.1", only: :test},
       {:sobelow, "~> 0.14", [only: [:dev, :test], runtime: false]},

@@ -48,7 +48,8 @@ defmodule OpentelemetryPlugTest do
   )a
 
   test "creates span and adds propagation headers" do
-    assert {200, headers, "Hello world"} = request(:get, "/hello/world", [{"x-sre-trace", "VALUE"}])
+    assert {200, headers, "Hello world"} =
+             request(:get, "/hello/world", [{"x-sre-trace", "VALUE"}])
 
     assert List.keymember?(headers, "traceparent", 0)
     assert_receive {:span, span(name: "/hello/:foo", attributes: attrs)}, 5000
@@ -57,6 +58,7 @@ defmodule OpentelemetryPlugTest do
     for attr <- @default_attrs do
       assert Map.has_key?(attrs_map, attr)
     end
+
     assert Map.has_key?(attrs_map, "http.response.header.content-type")
     assert Map.get(attrs_map, "x-sre-trace") == "VALUE"
   end

@@ -75,7 +75,8 @@ defmodule OpentelemetryPlug.MixProject do
       {:ssl_verify_fun, "~> 1.1", only: :test},
       {:sobelow, "~> 0.14", [only: [:dev, :test], runtime: false]},
       {:credo, "~> 1.7", [only: [:dev, :test], runtime: false]},
-      {:dialyxir, "~> 1.4", [only: [:dev, :test], runtime: false]}
+      {:dialyxir, "~> 1.4", [only: [:dev, :test], runtime: false]},
+      {:ex_doc, ">= 0.0.0", only: :dev, runtime: false}
     ]
   end
 end

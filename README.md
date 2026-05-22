@@ -1,15 +1,19 @@
 # OpentelemetryPlug
 
+[![hex.pm version](https://img.shields.io/hexpm/v/otel_plug.svg?style=flat)](https://hex.pm/packages/otel_plug)
+[![hex.pm downloads](https://img.shields.io/hexpm/dt/otel_plug.svg?style=flat)](https://hex.pm/packages/otel_plug)
+[![Scorecards supply-chain security](https://github.com/bancolombia/opentelemetry_plug/actions/workflows/scorecards-analysis.yml/badge.svg)](https://github.com/bancolombia/opentelemetry_plug/actions/workflows/scorecards-analysis.yml)
+
 An OpenTelemetry Plug middleware for instrumenting HTTP requests in Elixir applications using the Plug framework. This package automatically creates spans for incoming HTTP requests, capturing essential attributes such as HTTP method, URL, status code, and more.
 
 ## Installation
 
-The package can be installed by adding `opentelemetry_plug` to your list of dependencies in `mix.exs`:
+The package can be installed by adding `otel_plug` to your list of dependencies in `mix.exs`:
 
 ```elixir
 def deps do
   [
-    {:opentelemetry_plug, git: "https://github.com/bancolombia/opentelemetry_plug.git", tag: "v1.3.0"}, # Check for latest tag on GitHub
+    {:otel_plug, "~> 1.3"}, # Check for latest version on Hex.pm
   ]
 end
 ```

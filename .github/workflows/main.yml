@@ -10,36 +10,35 @@ on:
       - master
 jobs:
   build:
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    name: Build and test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
+
     steps:
-      - name: Generate a token of Github APP
+      - name: Generate a token
         id: generate_token
-        if: github.ref == 'refs/heads/master'
-        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
+        uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ secrets.APP_ID_ADMIN_GITHUB }}
+          client-id: ${{ secrets.APP_ID_ADMIN_GITHUB }}
           private-key: ${{ secrets.APP_PRIVATE_KEY_ADMIN_GITHUB }}
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: github.ref == 'refs/heads/master'
+      - uses: actions/checkout@v6
         with:
           token: ${{ steps.generate_token.outputs.token }}
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: github.ref != 'refs/heads/master'
-
+      # Semantic Release
       - name: Verify Conventional Commits
-        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        uses: amannn/action-semantic-pull-request@v6
         if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up NodeJS
         if: github.ref == 'refs/heads/master'
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        uses: actions/setup-node@v6
         with:
-          node-version-file: '.nvmrc'
+          node-version-file: ".nvmrc"
       - name: Set up Semantic Release
         if: github.ref == 'refs/heads/master'
         run: npm -g install @semantic-release/git semantic-release
@@ -48,14 +47,14 @@ jobs:
         run: npx semantic-release
         env:
           GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
-
+      # Elixir
       - name: Set up Elixir
-        uses: erlef/setup-beam@e6d7c94229049569db56a7ad5a540c051a010af9 # v1.20.4
+        uses: erlef/setup-beam@v1
         with:
           version-type: strict
           version-file: ".tool-versions"
       - name: Restore dependencies cache
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache@v5
         with:
           path: deps
           key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
@@ -63,29 +62,28 @@ jobs:
       - name: Install dependencies
         run: mix deps.get && mix deps.compile
         env:
-          SKIP_GIT_HOOKS: 'true'
-      - name: Validate code formatting
-        run: mix format --check-formatted
-      - name: Code analysis
-        run: mix credo --strict && mix dialyzer
+          MIX_ENV: test
+          SKIP_GIT_HOOKS: "true"
+      - name: Static code analysis
+        run: mix format --check-formatted && mix sobelow && mix credo --strict && mix dialyzer
       - name: Tests & Coverage (master)
         if: github.ref == 'refs/heads/master'
         run: mix coveralls.github
         env:
-          CI_ENV: 'true'
+          CI_ENV: "true"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Tests & Coverage (pull requests)
         if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
         run: mix coveralls.lcov
         env:
-          CI_ENV: 'true'
+          CI_ENV: "true"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Setup PR Report tool
         if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
-        uses: hrishikesh-kadam/setup-lcov@6c1aa0cc9e1c02f9f58f01ac599f1064ccc83470 # v1.1.0
+        uses: hrishikesh-kadam/setup-lcov@v1
       - name: Validate code coverage
         if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
-        uses: zgosalvez/github-actions-report-lcov@4eb99c09644c30cceb609413620bd9e1bf80ee79 # v6.0.1
+        uses: zgosalvez/github-actions-report-lcov@v7
         with:
           coverage-files: cover/lcov.info
           minimum-coverage: 70

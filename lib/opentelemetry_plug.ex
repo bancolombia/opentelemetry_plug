@@ -29,7 +29,8 @@ defmodule OpentelemetryPlug do
     "tracestate",
     "x-forwarded-for",
     "x-forwarded-proto",
-    "x-request-id"
+    "x-request-id",
+    "x-sre-trace"
   ]
 
   @default_response_headers_to_trace [
@@ -222,12 +223,19 @@ defmodule OpentelemetryPlug do
 
   defp extract_headers(conn, type) do
     headers_to_trace(type)
-    |> Enum.map(fn header ->
-      value = header_or_nil(conn, header, type)
-      {:"http.#{type}.header.#{String.downcase(header)}", value}
-    end)
+    |> Enum.map(&map_header(&1, conn, type))
     |> Enum.reject(&is_nil(elem(&1, 1)))
     |> Enum.into(%{})
+  end
+
+  defp map_header("x-sre-trace", conn, type) do
+    value = header_or_nil(conn, "x-sre-trace", type)
+    {"x-sre-trace", value}
+  end
+
+  defp map_header(header, conn, type) do
+    value = header_or_nil(conn, header, type)
+    {"http.#{type}.header.#{String.downcase(header)}", value}
   end
 
   defp header_or_nil(conn, header, :request) do
@@ -341,7 +349,7 @@ defmodule OpentelemetryPlug do
   end
 
   defp log_ignored_route(routes) do
-    if Enum.count(routes) > 0 do
+    if not Enum.empty?(routes) do
       Logger.warning("OpentelemetryPlug is ignoring the following routes: #{inspect(routes)}")
     end
 
